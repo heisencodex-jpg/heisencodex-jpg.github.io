@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I Wrote 46 Rules for a German Job-Visa Classifier. Only 14 Ever Fire.</title>
+<meta name="description" content="What 1,679 real German job listings taught me about shipping honest data products.">
+<style>
+  body { max-width: 720px; margin: 2em auto; padding: 0 1em; font-family: Georgia, serif; font-size: 18px; line-height: 1.6; color: #222; }
+  h1 { font-size: 2em; line-height: 1.2; margin-top: 1em; }
+  h2 { font-size: 1.4em; margin-top: 2em; border-bottom: 1px solid #ddd; padding-bottom: 0.3em; }
+  p, ul { margin: 1em 0; }
+  ul { padding-left: 1.5em; }
+  code { background: #f5f5f5; padding: 0.15em 0.4em; border-radius: 3px; font-size: 0.9em; }
+  pre { background: #f5f5f5; padding: 1em; overflow-x: auto; border-radius: 4px; }
+  pre code { background: none; padding: 0; font-size: 0.85em; line-height: 1.4; }
+  table { border-collapse: collapse; margin: 1.5em 0; width: 100%; font-size: 0.95em; }
+  th, td { padding: 0.5em 0.9em; border-bottom: 1px solid #ddd; text-align: left; }
+  th { background: #f9f9f9; font-weight: 600; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2.5em 0; }
+  a { color: #1a73e8; text-decoration: none; border-bottom: 1px solid #cfe0ff; }
+  a:hover { border-bottom-color: #1a73e8; }
+  em { color: #555; }
+  strong { color: #111; }
+</style>
+</head>
+<body>
+<h1>I Wrote 46 Rules for a German Job-Visa Classifier. Only 14 Ever Fire.</h1>
+<p><em>And 98.57% of rows say &quot;I don&#x27;t know.&quot; Here&#x27;s what 1,679 real job listings taught me about shipping honest data products.</em></p>
+<hr>
+<p>Last week I published <a href="https://apify.com/cg_nguyen/germany-visa-jobs">germany-visa-jobs</a>, an Apify Actor that pulls listings from Germany&#x27;s federal job board and stamps each one with a visa-sponsorship label: <code>confirmed</code>, <code>likely</code>, <code>unlikely</code>, or <code>unknown</code>. Pay-per-result. The README claimed &quot;~93% unknown&quot; because that&#x27;s what I eyeballed during the build.</p>
+<p>Before writing this post, I went back and measured. The real number is <strong>98.57%</strong>.</p>
+<p>It got worse: in 1,679 stratified job listings, the classifier returned <code>confirmed</code> exactly <strong>zero</strong> times.</p>
+<p>This is the story of what that measurement revealed about the build I&#x27;d just shipped, the rules I&#x27;d carefully written that turned out to be dead code at runtime, and why that&#x27;s the best thing that could have happened to the product.</p>
+<h2>The setup</h2>
+<p>Germany&#x27;s Bundesagentur für Arbeit job board is the federal source — public API, ~1.6 million live listings, every relevant employer represented. It has every field a relocating engineer might want, <strong>except</strong> whether an employer will sponsor a work visa. There is no filter, no checkbox, no field.</p>
+<p>So I wrote a classifier in TypeScript. Four rule sets, <strong>46 rules total</strong>:</p>
+<ul>
+<li><strong>20 hard-positive phrases</strong> in English and German: <code>visa sponsorship</code>, <code>Blue Card</code>, <code>Blaue Karte EU</code>, <code>Skilled Worker visa</code>, <code>Fachkräfteeinwanderungsgesetz</code>, <code>relocation support</code>, <code>§18a/§18b AufenthG</code>, etc.</li>
+<li><strong>12 hard-negative phrases</strong>: <code>no visa sponsorship</code>, <code>EU citizenship required</code>, <code>deutsche Staatsangehörigkeit erforderlich</code>, <code>security clearance required</code>, <code>SÜG security check</code>, etc.</li>
+<li><strong>10 soft positives</strong>: <code>international team</code>, <code>working language English</code>, <code>D&amp;I statement</code>, <code>global organization</code>, <code>remote / mobile work</code>, etc.</li>
+<li><strong>4 negative employer patterns</strong> for citizenship-restricted firms: Bundeswehr, BWI GmbH (Bundeswehr IT), federal agencies (BKA/BND/Bundespolizei), Verfassungsschutz.</li>
+</ul>
+<p>The label logic:</p>
+<ul>
+<li><code>confirmed</code> = ≥2 hard-positives AND zero hard-negatives.</li>
+<li><code>likely</code> = exactly 1 hard-positive, no hard-negatives. Or ≥3 soft signals when no hard signal fires.</li>
+<li><code>unlikely</code> = any hard-negative AND no hard-positives.</li>
+<li><code>unknown</code> = everything else.</li>
+</ul>
+<p>I wrote 13 unit tests covering the branches. They passed. Ship it.</p>
+<h2>The benchmark</h2>
+<p>To write this post honestly, I needed real numbers. So I ran the classifier on 1,679 listings stratified across 5 search terms:</p>
+<table>
+<thead><tr><th>Search term</th><th>Sample size</th></tr></thead>
+<tbody>
+<tr><td>Software Engineer</td><td>400</td></tr>
+<tr><td>Data Scientist</td><td>282</td></tr>
+<tr><td>Maschinenbauingenieur</td><td>197</td></tr>
+<tr><td>Pflegefachkraft (nursing)</td><td>400</td></tr>
+<tr><td>Marketing Manager</td><td>400</td></tr>
+</tbody></table>
+<p>(Data Scientist and Maschinenbauingenieur returned fewer than 400 because the federal API exhausted at those totals. The other three terms hit the 400 cap.)</p>
+<p>The terms span English-heavy tech, German-heavy engineering, German-only nursing, and a mid-skill management category. If the classifier behaves differently across them, this sample shows it.</p>
+<p>Results:</p>
+<pre><code>confirmed:    0 rows   ( 0.00%)
+likely:      16 rows   ( 0.95%)
+unlikely:     8 rows   ( 0.48%)
+unknown:  1,655 rows   (98.57%)</code></pre>
+<p>Zero <code>confirmed</code>. Sixteen <code>likely</code>. Eight <code>unlikely</code>. <strong>One thousand, six hundred and fifty-five <code>unknown</code>.</strong></p>
+<p>The README said 93%. The truth is 98.57%. I shipped a product whose silent middle is even bigger than I claimed.</p>
+<h2>Where the few signals are</h2>
+<p>It gets sharper when you split by search term:</p>
+<table>
+<thead><tr><th>Search term</th><th>confirmed</th><th>likely</th><th>unlikely</th><th>unknown</th></tr></thead>
+<tbody>
+<tr><td>Software Engineer</td><td>0</td><td>11</td><td>6</td><td>383</td></tr>
+<tr><td>Data Scientist</td><td>0</td><td>5</td><td>2</td><td>275</td></tr>
+<tr><td>Maschinenbauingenieur</td><td>0</td><td>0</td><td>0</td><td>197</td></tr>
+<tr><td>Pflegefachkraft</td><td>0</td><td>0</td><td>0</td><td>400</td></tr>
+<tr><td>Marketing Manager</td><td>0</td><td>0</td><td>0</td><td>400</td></tr>
+</tbody></table>
+<p>Software Engineer and Data Scientist carry every signal in the dataset, on both sides. Mechanical engineering, nursing, and marketing return <strong>100% unknown each</strong>. Zero employers in 997 job postings across those three categories used a single visa-related phrase the classifier could lock onto.</p>
+<p>This isn&#x27;t a bug in the rules. It&#x27;s a signal about the market. German employers in nursing and traditional engineering simply do not mention visa policy in their job posts. They may sponsor or may not, but the description does not carry the evidence.</p>
+<p>For an AI agent or relocation consultant filtering only <code>confirmed + likely</code>, the dataset shrinks from 1,679 to <strong>16 rows</strong>. For a Pflegefachkraft candidate filtering that way: zero. The signal lives in <code>unknown</code>, or it doesn&#x27;t live anywhere.</p>
+<h2>What the 46 rules actually do</h2>
+<p>Here&#x27;s the part I didn&#x27;t expect, and the part that should change how anyone designs this kind of classifier.</p>
+<p><strong>Of 20 hard-positive rules, exactly 5 ever fired:</strong></p>
+<table>
+<thead><tr><th>Rule</th><th>Hits</th></tr></thead>
+<tbody>
+<tr><td><code>relocation support</code></td><td>6</td></tr>
+<tr><td><code>Skilled Worker visa</code></td><td>2</td></tr>
+<tr><td><code>Umzugshilfe</code></td><td>1</td></tr>
+<tr><td><code>visa sponsorship</code></td><td>1</td></tr>
+<tr><td><code>work-permit support</code></td><td>1</td></tr>
+</tbody></table>
+<p>The other 15 — including every German legal reference I was proudest of (<code>§18a/§18b AufenthG</code>, <code>Aufenthaltstitel nach §18</code>, <code>Fachkräfteeinwanderungsgesetz</code>, <code>Blaue Karte EU</code>, <code>Wir helfen beim Visum</code>) — fired <strong>zero times</strong>. They are dead code at runtime. I spent the better part of a day reading the Aufenthaltsgesetz to write correct German legal references into the rule list, and not one of them caught a real job.</p>
+<p><strong>Of 12 hard-negative rules, only 2 fired:</strong></p>
+<table>
+<thead><tr><th>Rule</th><th>Hits</th></tr></thead>
+<tbody>
+<tr><td>BWI GmbH (Bundeswehr IT)</td><td>7</td></tr>
+<tr><td>SÜG security check (citizens only)</td><td>1</td></tr>
+</tbody></table>
+<p><strong>Of 4 negative-employer patterns, only BWI matched anything.</strong> Bundeswehr proper, Bundespolizei/BKA/BND, Verfassungsschutz: zero hits in 1,679 rows. They post jobs through different channels — or under names my naive employer-string matching missed. I&#x27;d rated this rule set as part of the moat. In practice it&#x27;s one employer plus three placeholders.</p>
+<p><strong>The soft signals reveal a different problem.</strong> Seven of the ten soft rules fired at least once, so on paper they look healthy. The breakdown:</p>
+<table>
+<thead><tr><th>Soft rule</th><th>Hits</th><th>% of all rows</th></tr></thead>
+<tbody>
+<tr><td><code>remote / mobile work</code></td><td>409</td><td>24.36%</td></tr>
+<tr><td><code>international team/environment</code></td><td>58</td><td>3.45%</td></tr>
+<tr><td><code>worldwide presence</code></td><td>25</td><td>1.49%</td></tr>
+<tr><td><code>D&amp;I statement</code></td><td>17</td><td>1.01%</td></tr>
+<tr><td><code>global organization</code></td><td>10</td><td>0.60%</td></tr>
+<tr><td><code>Vielfalt &amp; Inklusion</code></td><td>6</td><td>0.36%</td></tr>
+<tr><td><code>expat mentioned</code></td><td>2</td><td>0.12%</td></tr>
+</tbody></table>
+<p>The problem is concentrated in one row: <code>remote / mobile work</code> fires on <strong>24% of all listings</strong>. That&#x27;s not a visa signal — that&#x27;s a post-pandemic baseline expectation that every fourth German job advertises. Yet it has equal weight in the ≥3-soft promotion rule alongside <code>working language English</code> and <code>expat mentioned</code>, which actually correlate with international hiring.</p>
+<p>Of 5 rows that got soft-promoted from <code>unknown</code> to <code>likely</code>, every single one matched <code>remote / mobile work</code> plus two other generic globalization markers. Looking at them by hand: none read as obvious visa-friendly employers. NT-ware Systemprogrammierung is a print-management software company in Bad Iburg. CISPA is a Helmholtz research center — they probably <em>do</em> sponsor, but for an entirely different reason (academic visa track) than the soft signals my rules caught.</p>
+<p>The tally: <strong>of 46 rules, 14 fired at least once.</strong> Of those 14, one fires far too often to mean what I want it to mean. The actual moat is 13 rules — not 46.</p>
+<h2>What this measurement changes</h2>
+<p>A normal post-mortem would file 30 issues to add more rules. That instinct is wrong, and I want to be specific about why.</p>
+<p>### 1. The <code>confirmed</code> tier is empty in practice. Stop pricing for it.</p>
+<p>Zero <code>confirmed</code> rows in 1,679 means German employers structurally do not write job descriptions that contain two explicit visa-sponsorship phrases. The bucket exists in code, but production never reaches it. Every UX decision that treats <code>confirmed</code> as the headline tier — pricing page tooltips, README examples, demo screenshots — is misleading.</p>
+<p>The honest reframe: <code>likely</code> is the practical &quot;yes&quot; tier. The next version is likely to rename the buckets and drop <code>confirmed</code> from the headline framing in the pricing copy — there&#x27;s no point selling a tier production doesn&#x27;t reach.</p>
+<p>### 2. The default filter must include <code>unknown</code>. This is load-bearing, not optional.</p>
+<p>When I shipped, the input schema defaulted <code>visaStatusFilter</code> to <code>[&quot;confirmed&quot;, &quot;likely&quot;, &quot;unknown&quot;]</code>. I half-defended this as a thoughtful default. The benchmark proves it was the only honest default: excluding <code>unknown</code> shrinks the result set by 98.57%. A relocation consultant who flips the filter to <code>[&quot;confirmed&quot;, &quot;likely&quot;]</code> to &quot;see only verified roles&quot; is getting <strong>1.43% of the actual visa-sponsoring jobs in the market</strong>, because most visa-sponsoring employers simply don&#x27;t mention sponsorship in the description.</p>
+<p>The next version is likely to rename the field so this trade-off is impossible to misunderstand — probably something like <code>dropSilentRows: false</code> (default) versus <code>dropSilentRows: true</code> (explicit &quot;I accept losing 99% of the dataset to read only loud signals&quot;).</p>
+<p>### 3. Rule pruning beats rule adding.</p>
+<p>I&#x27;m not going to write more rules. I&#x27;m going to remove <code>remote / mobile work</code> from the soft-signal list, downweight the broad-globalization markers, and concentrate the next iteration on the few rules that actually fire — making them more precise (negative lookbehinds for &quot;we don&#x27;t sponsor&quot;, &quot;without relocation&quot;) rather than chasing breadth.</p>
+<p>A classifier with 13 rules that all fire and all mean something will outperform a classifier with 46 rules where 32 are dead code. This is the regex-classifier equivalent of feature pruning in a sparse model. The moat is the precision of the rules that fire, not the count of rules you can list.</p>
+<p>### 4. The LLM tie-breaker stops being optional. It&#x27;s the actual classifier for the <code>unknown</code> tier.</p>
+<p>The actor ships with a Claude Haiku tie-breaker as an opt-in escape hatch, capped at a configurable fraction of the run, priced at $0.001 per call. I positioned it as a nice-to-have.</p>
+<p>Looking at 98.57% <code>unknown</code>, the tie-breaker isn&#x27;t a nice-to-have — it&#x27;s the only signal a buyer can get for almost every row in their result set. The next version probably needs to document this honestly: regex for the 1.43% of loud cases, LLM for everything else, with the buyer choosing whether the cost ceiling is worth the recall.</p>
+<p>This is uncomfortable to write because it weakens my &quot;deterministic and free!&quot; marketing. It also happens to be true.</p>
+<p>### 5. Build the benchmark into the actor.</p>
+<p>The most important thing I did this week was run the benchmark. The next iteration should ideally wire it into the actor itself: every release publishing per-rule fire-rate numbers in the README, so the next version of me cannot ship a classifier with 32 dead rules without noticing.</p>
+<p>This is the bigger lesson for anyone building data products on top of noisy real-world text: <strong>the rules you write feel like the product, but the rules that fire are the product.</strong> They are not always the same set. Measuring closes the gap.</p>
+<h2>What I&#x27;d tell a past me</h2>
+<p>Six days ago I would have called this classifier &quot;tight&quot; and &quot;comprehensive.&quot; It is neither. It is sparse, two-thirds aspirational, and the one-third that works is leaning on a single soft signal that fires on every fourth job for reasons unrelated to visa policy.</p>
+<p>The good news: the parts that don&#x27;t work are visible, the parts that do work are honest, and the cost of fixing both is bounded by a half-week of focused rule pruning plus a real benchmark in CI. The next iteration should ship with fewer rules and more dignity.</p>
+<p>The lesson I am taking into the next actor I build: <strong>write the benchmark before you write the rules.</strong> I had unit tests for the classifier from day one. I had aggregate fire-rate numbers from never. Unit tests prove a rule works on a contrived example. Benchmarks prove rules work <em>together</em>, on data that doesn&#x27;t know you&#x27;re watching. They are not the same thing, and only one of them ships.</p>
+<hr>
+<p>The actor is <a href="https://apify.com/cg_nguyen/germany-visa-jobs">here</a>; the next iteration will likely prune the dead rules, surface the benchmark report in the README, and rename the schema so <code>confirmed</code> stops pretending to be a reachable state. If you&#x27;re building a similar text-classifier-as-a-product, I&#x27;d love to hear what your fire-rate numbers look like once you measure.</p>
+</body>
+</html>
