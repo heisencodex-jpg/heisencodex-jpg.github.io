@@ -51,71 +51,62 @@
 <p>I wrote 13 unit tests covering the branches. They passed. Ship it.</p>
 <h2>The benchmark</h2>
 <p>To write this post honestly, I needed real numbers. So I ran the classifier on 1,679 listings stratified across 5 search terms:</p>
-<table>
-<thead><tr><th>Search term</th><th>Sample size</th></tr></thead>
-<tbody>
-<tr><td>Software Engineer</td><td>400</td></tr>
-<tr><td>Data Scientist</td><td>282</td></tr>
-<tr><td>Maschinenbauingenieur</td><td>197</td></tr>
-<tr><td>Pflegefachkraft (nursing)</td><td>400</td></tr>
-<tr><td>Marketing Manager</td><td>400</td></tr>
-</tbody></table>
-<p>(Data Scientist and Maschinenbauingenieur returned fewer than 400 because the federal API exhausted at those totals. The other three terms hit the 400 cap.)</p>
-<p>The terms span English-heavy tech, German-heavy engineering, German-only nursing, and a mid-skill management category. If the classifier behaves differently across them, this sample shows it.</p>
+<ul>
+<li>Software Engineer — 400 (English-heavy tech)</li>
+<li>Data Scientist — 282 (English-heavy tech)</li>
+<li>Maschinenbauingenieur — 197 (German-heavy engineering)</li>
+<li>Pflegefachkraft (nursing) — 400 (German-only nursing)</li>
+<li>Marketing Manager — 400 (mixed business)</li>
+</ul>
+<p>(Data Scientist and Maschinenbauingenieur returned fewer than 400 because the federal API exhausted at those totals. The sample spans English-heavy tech, German-heavy engineering, German-only nursing, and a mid-skill management category — if the classifier behaves differently across them, this dataset shows it.)</p>
 <p>Results:</p>
-<pre><code>confirmed:    0 rows   ( 0.00%)
-likely:      16 rows   ( 0.95%)
-unlikely:     8 rows   ( 0.48%)
-unknown:  1,655 rows   (98.57%)</code></pre>
+<ul>
+<li><strong>confirmed:</strong> 0 rows (0.00%)</li>
+<li><strong>likely:</strong> 16 rows (0.95%)</li>
+<li><strong>unlikely:</strong> 8 rows (0.48%)</li>
+<li><strong>unknown:</strong> 1,655 rows (98.57%)</li>
+</ul>
 <p>Zero <code>confirmed</code>. Sixteen <code>likely</code>. Eight <code>unlikely</code>. <strong>One thousand, six hundred and fifty-five <code>unknown</code>.</strong></p>
 <p>The README said 93%. The truth is 98.57%. I shipped a product whose silent middle is even bigger than I claimed.</p>
 <h2>Where the few signals are</h2>
 <p>It gets sharper when you split by search term:</p>
-<table>
-<thead><tr><th>Search term</th><th>confirmed</th><th>likely</th><th>unlikely</th><th>unknown</th></tr></thead>
-<tbody>
-<tr><td>Software Engineer</td><td>0</td><td>11</td><td>6</td><td>383</td></tr>
-<tr><td>Data Scientist</td><td>0</td><td>5</td><td>2</td><td>275</td></tr>
-<tr><td>Maschinenbauingenieur</td><td>0</td><td>0</td><td>0</td><td>197</td></tr>
-<tr><td>Pflegefachkraft</td><td>0</td><td>0</td><td>0</td><td>400</td></tr>
-<tr><td>Marketing Manager</td><td>0</td><td>0</td><td>0</td><td>400</td></tr>
-</tbody></table>
+<ul>
+<li><strong>Software Engineer:</strong> 0 confirmed · 11 likely · 6 unlikely · 383 unknown</li>
+<li><strong>Data Scientist:</strong> 0 confirmed · 5 likely · 2 unlikely · 275 unknown</li>
+<li><strong>Maschinenbauingenieur:</strong> 0 confirmed · 0 likely · 0 unlikely · 197 unknown</li>
+<li><strong>Pflegefachkraft:</strong> 0 confirmed · 0 likely · 0 unlikely · 400 unknown</li>
+<li><strong>Marketing Manager:</strong> 0 confirmed · 0 likely · 0 unlikely · 400 unknown</li>
+</ul>
 <p>Software Engineer and Data Scientist carry every signal in the dataset, on both sides. Mechanical engineering, nursing, and marketing return <strong>100% unknown each</strong>. Zero employers in 997 job postings across those three categories used a single visa-related phrase the classifier could lock onto.</p>
 <p>This isn&#x27;t a bug in the rules. It&#x27;s a signal about the market. German employers in nursing and traditional engineering simply do not mention visa policy in their job posts. They may sponsor or may not, but the description does not carry the evidence.</p>
 <p>For an AI agent or relocation consultant filtering only <code>confirmed + likely</code>, the dataset shrinks from 1,679 to <strong>16 rows</strong>. For a Pflegefachkraft candidate filtering that way: zero. The signal lives in <code>unknown</code>, or it doesn&#x27;t live anywhere.</p>
 <h2>What the 46 rules actually do</h2>
 <p>Here&#x27;s the part I didn&#x27;t expect, and the part that should change how anyone designs this kind of classifier.</p>
 <p><strong>Of 20 hard-positive rules, exactly 5 ever fired:</strong></p>
-<table>
-<thead><tr><th>Rule</th><th>Hits</th></tr></thead>
-<tbody>
-<tr><td><code>relocation support</code></td><td>6</td></tr>
-<tr><td><code>Skilled Worker visa</code></td><td>2</td></tr>
-<tr><td><code>Umzugshilfe</code></td><td>1</td></tr>
-<tr><td><code>visa sponsorship</code></td><td>1</td></tr>
-<tr><td><code>work-permit support</code></td><td>1</td></tr>
-</tbody></table>
+<ul>
+<li><code>relocation support</code> — 6 hits</li>
+<li><code>Skilled Worker visa</code> — 2 hits</li>
+<li><code>Umzugshilfe</code> — 1 hit</li>
+<li><code>visa sponsorship</code> — 1 hit</li>
+<li><code>work-permit support</code> — 1 hit</li>
+</ul>
 <p>The other 15 — including every German legal reference I was proudest of (<code>§18a/§18b AufenthG</code>, <code>Aufenthaltstitel nach §18</code>, <code>Fachkräfteeinwanderungsgesetz</code>, <code>Blaue Karte EU</code>, <code>Wir helfen beim Visum</code>) — fired <strong>zero times</strong>. They are dead code at runtime. I spent the better part of a day reading the Aufenthaltsgesetz to write correct German legal references into the rule list, and not one of them caught a real job.</p>
 <p><strong>Of 12 hard-negative rules, only 2 fired:</strong></p>
-<table>
-<thead><tr><th>Rule</th><th>Hits</th></tr></thead>
-<tbody>
-<tr><td>BWI GmbH (Bundeswehr IT)</td><td>7</td></tr>
-<tr><td>SÜG security check (citizens only)</td><td>1</td></tr>
-</tbody></table>
+<ul>
+<li><code>BWI GmbH</code> (Bundeswehr IT) — 7 hits</li>
+<li><code>SÜG security check</code> (citizens only) — 1 hit</li>
+</ul>
 <p><strong>Of 4 negative-employer patterns, only BWI matched anything.</strong> Bundeswehr proper, Bundespolizei/BKA/BND, Verfassungsschutz: zero hits in 1,679 rows. They post jobs through different channels — or under names my naive employer-string matching missed. I&#x27;d rated this rule set as part of the moat. In practice it&#x27;s one employer plus three placeholders.</p>
 <p><strong>The soft signals reveal a different problem.</strong> Seven of the ten soft rules fired at least once, so on paper they look healthy. The breakdown:</p>
-<table>
-<thead><tr><th>Soft rule</th><th>Hits</th><th>% of all rows</th></tr></thead>
-<tbody>
-<tr><td><code>remote / mobile work</code></td><td>409</td><td>24.36%</td></tr>
-<tr><td><code>international team/environment</code></td><td>58</td><td>3.45%</td></tr>
-<tr><td><code>worldwide presence</code></td><td>25</td><td>1.49%</td></tr>
-<tr><td><code>D&amp;I statement</code></td><td>17</td><td>1.01%</td></tr>
-<tr><td><code>global organization</code></td><td>10</td><td>0.60%</td></tr>
-<tr><td><code>Vielfalt &amp; Inklusion</code></td><td>6</td><td>0.36%</td></tr>
-<tr><td><code>expat mentioned</code></td><td>2</td><td>0.12%</td></tr>
-</tbody></table>
+<ul>
+<li><code>remote / mobile work</code> — 409 hits (24.36% of all rows)</li>
+<li><code>international team/environment</code> — 58 hits (3.45%)</li>
+<li><code>worldwide presence</code> — 25 hits (1.49%)</li>
+<li><code>D&amp;I statement</code> — 17 hits (1.01%)</li>
+<li><code>global organization</code> — 10 hits (0.60%)</li>
+<li><code>Vielfalt &amp; Inklusion</code> — 6 hits (0.36%)</li>
+<li><code>expat</code> mentioned — 2 hits (0.12%)</li>
+</ul>
 <p>The problem is concentrated in one row: <code>remote / mobile work</code> fires on <strong>24% of all listings</strong>. That&#x27;s not a visa signal — that&#x27;s a post-pandemic baseline expectation that every fourth German job advertises. Yet it has equal weight in the ≥3-soft promotion rule alongside <code>working language English</code> and <code>expat mentioned</code>, which actually correlate with international hiring.</p>
 <p>Of 5 rows that got soft-promoted from <code>unknown</code> to <code>likely</code>, every single one matched <code>remote / mobile work</code> plus two other generic globalization markers. Looking at them by hand: none read as obvious visa-friendly employers. NT-ware Systemprogrammierung is a print-management software company in Bad Iburg. CISPA is a Helmholtz research center — they probably <em>do</em> sponsor, but for an entirely different reason (academic visa track) than the soft signals my rules caught.</p>
 <p>The tally: <strong>of 46 rules, 14 fired at least once.</strong> Of those 14, one fires far too often to mean what I want it to mean. The actual moat is 13 rules — not 46.</p>
